@@ -15,27 +15,35 @@
     "node": ">=12"
   },
   "dependencies": {
+    "@apidevtools/swagger-parser": "^10.0.2",
     "@hapi/hoek": "^9.0.4",
     "@hapi/joi": "^17.1.0",
     "dot-prop": "^5.2.0",
     "enjoi": "git://github.com/sprootshift/enjoi",
     "js-yaml": "^3.11.0",
     "merge-object-files": "^2.0.0",
-    "swagger-parser": "^9.0.1"
+    "prettier": "^2.2.1"
   },
   "devDependencies": {
     "@hapi/boom": "^9.1.0",
     "@hapi/eslint-config-hapi": "^13.0.2",
     "@hapi/eslint-plugin-hapi": "^4.3.5",
-    "@hapi/hapi": "^19.1.1",
+    "@hapi/hapi": "^20.1.2",
+    "@types/hapi__hapi": "20.0.3",
+    "@types/hapi__joi": "^17.1.6",
+    "@types/node": "^14.14.41",
+    "@types/tape": "^4.13.0",
     "eslint": "^6.8.0",
     "nyc": "^15.0.0",
-    "tape": "^5.0.0"
+    "tape": "^5.0.0",
+    "typescript": "^4.2.4"
   },
   "scripts": {
     "test": "tape test/*.js",
     "cover": "nyc npm test",
-    "lint": "eslint lib"
+    "lint": "eslint lib",
+    "build": "tsc",
+    "format": "prettier --loglevel warn --write '{lib,test}/**/*.{ts,yml,yaml}' '!**/*.d.ts'"
   },
   "license": "Apache-2.0",
   "main": "./lib/index",

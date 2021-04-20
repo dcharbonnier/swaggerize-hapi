@@ -1,8 +1,6 @@
-'use strict';
-
 /*
  * Copy of Erik's caller module with node 8 support added.
-*/
+ */
 
 /**
  * Module wrapper of @substack's `caller.js`
@@ -10,7 +8,7 @@
  * @blessings: https://twitter.com/eriktoth/statuses/413719312273125377
  * @see https://code.google.com/p/v8/wiki/JavaScriptStackTraceApi
  */
-const caller = function (depth) {
+const caller = function (depth?: number) {
     const pst = Error.prepareStackTrace;
 
     Error.prepareStackTrace = function (_, frames) {
@@ -23,7 +21,7 @@ const caller = function (depth) {
         return stack;
     };
 
-    const stack = (new Error()).stack.slice(2);
+    const stack = (new Error() as any).stack.slice(2);
 
     let file;
 
@@ -34,4 +32,4 @@ const caller = function (depth) {
     return file;
 };
 
-module.exports = caller;
+export default caller;

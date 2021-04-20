@@ -1,35 +1,42 @@
-'use strict';
-
-const Enjoi = require('enjoi');
-const Joi = require('@hapi/joi');
+import Enjoi from "enjoi";
+import Joi from "@hapi/joi";
+import { isNumber } from "util";
+import { OpenAPIV2 } from "openapi-types";
+import { Lifecycle } from "@hapi/hapi";
 
 const extensions = [
-    { type: 'int64', base: Joi.string().regex(/^\d+$/) },
-    { type: 'byte', base: Joi.string().base64() },
-    { type: 'date-time', base: Joi.date().iso() },
+    { type: "int64", base: Joi.string().regex(/^\d+$/) },
+    { type: "byte", base: Joi.string().base64() },
+    { type: "date-time", base: Joi.date().iso() },
     {
-        type: 'file',
+        type: "file",
         base: Joi.object({
-            value: Joi.binary().required(true),
-            consumes: Joi.array().items(
-                Joi.string().regex(/multipart\/form-data|application\/x-www-form-urlencoded/)
-            ).required(true),
-            in: Joi.string().regex(/formData/).required(true)
-        })
-    }
+            value: Joi.binary().required(),
+            consumes: Joi.array()
+                .items(
+                    Joi.string().regex(
+                        /multipart\/form-data|application\/x-www-form-urlencoded/
+                    )
+                )
+                .required(),
+            in: Joi.string()
+                .regex(/formData/)
+                .required(),
+        }),
+    },
 ];
 
 const refineType = function (type, format) {
-    if (type === 'integer') {
-        type = 'number';
+    if (type === "integer") {
+        type = "number";
     }
 
     switch (format) {
-        case 'int64':
-        case 'byte':
-        case 'binary':
-        case 'date':
-        case 'date-time':
+        case "int64":
+        case "byte":
+        case "binary":
+        case "date":
+        case "date-time":
             return format;
         default:
             return type;
@@ -46,18 +53,25 @@ const refineSchema = function (joiSchema, jsonSchema) {
 const enjoi = Enjoi.defaults({ extensions, refineType, refineSchema });
 
 const create = function (options = {}) {
-    const makeValidator = function (parameter, consumes, openapi, allowUnknownProperties = false) {
+    const makeValidator = function (
+        parameter,
+        consumes?,
+        openapi?,
+        allowUnknownProperties = false
+    ) {
         const coerce = coercion(parameter, consumes);
 
         let schema;
 
-        if ((parameter.in === 'body' || parameter.in === 'formData') && parameter.schema) {
-            schema = enjoi.schema(parameter.schema);
-            if (schema.type === 'object') {
+        if (
+            (parameter.in === "body" || parameter.in === "formData") &&
+            parameter.schema
+        ) {
+            schema = enjoi.schema(parameter.schema) as any;
+            if (schema.type === "object") {
                 schema = schema.unknown(allowUnknownProperties);
             }
-        }
-        else {
+        } else {
             let template = {
                 required: parameter.required,
                 enum: parameter.enum,
@@ -77,7 +91,7 @@ const create = function (options = {}) {
                 maxItems: parameter.maxItems,
                 minItems: parameter.minItems,
                 uniqueItems: parameter.uniqueItems,
-                multipleOf: parameter.multipleOf
+                multipleOf: parameter.multipleOf,
             };
 
             if (openapi) {
@@ -89,7 +103,7 @@ const create = function (options = {}) {
             schema = enjoi.schema(template);
         }
 
-        if (parameter.type === 'array') {
+        if (parameter.type === "array") {
             schema = schema.single(true);
         }
 
@@ -97,30 +111,38 @@ const create = function (options = {}) {
             schema = schema.required();
         }
 
-        if (parameter.in !== 'body' && parameter.allowEmptyValue) {
-            schema = schema.allow('').optional();
+        if (parameter.in !== "body" && parameter.allowEmptyValue) {
+            schema = schema.allow("").optional();
         }
 
         return {
             parameter,
             schema,
             routeExt: function (request, h) {
-                const p = parameter.in === 'query' ? 'query' : 'params';
+                const p = parameter.in === "query" ? "query" : "params";
                 if (request[p][parameter.name] !== undefined) {
-                    request[p][parameter.name] = coerce && request[p][parameter.name] && coerce(request[p][parameter.name]);
+                    request[p][parameter.name] =
+                        coerce &&
+                        request[p][parameter.name] &&
+                        coerce(request[p][parameter.name]);
                 }
                 return h.continue;
             },
-            validate: function (value) {
+            validate: function (value?) {
                 const data = coerce && value && coerce(value);
                 const result = schema.validate(data);
 
                 if (result && result.error) {
-
-                    result.error.message = result.error.message.replace('value', parameter.name);
+                    result.error.message = result.error.message.replace(
+                        "value",
+                        parameter.name
+                    );
 
                     result.error.details.forEach((detail) => {
-                        detail.message = detail.message.replace('value', parameter.name);
+                        detail.message = detail.message.replace(
+                            "value",
+                            parameter.name
+                        );
                         detail.path = [parameter.name];
                     });
 
@@ -128,15 +150,18 @@ const create = function (options = {}) {
                 }
 
                 return result.value;
-            }
+            },
         };
     };
 
-    const makeResponseValidator = function (responses, openapi) {
+    const makeResponseValidator = function (
+        responses: OpenAPIV2.ResponsesObject,
+        openapi
+    ) {
         const schemas = {};
 
         for (const [code, response] of Object.entries(responses)) {
-            if (!isNaN(code)) {
+            if (parseInt(code).toString() === code) {
                 let schemaDesc;
                 if (openapi && response.content) {
                     for (const mediaType of Object.keys(response.content)) {
@@ -151,7 +176,7 @@ const create = function (options = {}) {
                 }
                 if (schemaDesc) {
                     const schema = enjoi.schema(schemaDesc);
-                    if (schemaDesc === 'array') {
+                    if (schemaDesc === "array") {
                         schema.single(true);
                     }
                     schemas[code] = schema;
@@ -161,9 +186,15 @@ const create = function (options = {}) {
         return schemas;
     };
 
-    const makeAll = function (parameters = [], requestBody, consumes, openapi, allowUnknownProperties = false) {
-        const routeExt = [];
-        const validate = {};
+    const makeAll = function (
+        parameters: any[] = [],
+        requestBody?,
+        consumes?,
+        openapi?,
+        allowUnknownProperties = false
+    ) {
+        const routeExt: Lifecycle.Method[] = [];
+        const validate: any = {};
         const formValidators = {};
         let headers = {};
 
@@ -174,7 +205,7 @@ const create = function (options = {}) {
                 throw result.error;
             }
 
-            return this.parameter.type === 'file' ? result.value : result;
+            return this.parameter.type === "file" ? result.value : result;
         };
 
         if (openapi && requestBody && requestBody.content) {
@@ -182,8 +213,17 @@ const create = function (options = {}) {
             for (const mediaType of consumes) {
                 // Applying first available schema to all media types
                 if (requestBody.content[mediaType].schema) {
-                    const parameter = { in: 'body', schema: requestBody.content[mediaType].schema, name: 'body' };
-                    const validator = makeValidator(parameter, consumes, openapi, allowUnknownProperties);
+                    const parameter = {
+                        in: "body",
+                        schema: requestBody.content[mediaType].schema,
+                        name: "body",
+                    };
+                    const validator = makeValidator(
+                        parameter,
+                        consumes,
+                        openapi,
+                        allowUnknownProperties
+                    );
                     validate.payload = validator.validate;
                     break;
                 }
@@ -191,35 +231,46 @@ const create = function (options = {}) {
         }
 
         for (const parameter of parameters) {
-            const validator = makeValidator(parameter, consumes, openapi, allowUnknownProperties);
+            const validator = makeValidator(
+                parameter,
+                consumes,
+                openapi,
+                allowUnknownProperties
+            );
 
             switch (validator.parameter.in) {
-                case 'header':
+                case "header":
                     headers = headers || {};
                     headers[validator.parameter.name] = validator.schema;
                     break;
-                case 'query':
+                case "query":
                     validate.query = validate.query || {};
                     validate.query[validator.parameter.name] = validator.schema;
                     routeExt.push(validator.routeExt);
                     break;
-                case 'path':
+                case "path":
                     validate.params = validate.params || {};
-                    validate.params[validator.parameter.name.replace(/(\*[0-9]*|\?)$/, '')] = validator.schema;
+                    validate.params[
+                        validator.parameter.name.replace(/(\*[0-9]*|\?)$/, "")
+                    ] = validator.schema;
                     routeExt.push(validator.routeExt);
                     break;
-                case 'body':
+                case "body":
                     validate.payload = validator.validate;
                     break;
-                case 'formData':
-                    formValidators[validator.parameter.name] = formValidator.bind(validator);
+                case "formData":
+                    formValidators[
+                        validator.parameter.name
+                    ] = formValidator.bind(validator);
                     break;
                 default:
                     break;
             }
 
             if (headers && Object.keys(headers).length > 0) {
-                validate.headers = Joi.object(headers).options({ allowUnknown: true });
+                validate.headers = Joi.object(headers).options({
+                    allowUnknown: true,
+                });
             }
 
             if (!validate.payload && Object.keys(formValidators).length > 0) {
@@ -236,36 +287,36 @@ const create = function (options = {}) {
         }
 
         for (const [key, value] of Object.entries(validate)) {
-            if (typeof value === 'object' && !Joi.isSchema(value)) {
-                validate[key] = Joi.object(value);
+            if (typeof value === "object" && !Joi.isSchema(value)) {
+                validate[key] = Joi.object(value as any);
             }
         }
 
         return {
             validate,
-            routeExt
+            routeExt,
         };
     };
 
     return {
         makeAll,
         makeValidator,
-        makeResponseValidator
+        makeResponseValidator,
     };
 };
 
 const pathsep = function (format) {
     switch (format) {
-        case 'csv':
-            return ',';
-        case 'ssv':
-            return ' ';
-        case 'tsv':
-            return '\t';
-        case 'pipes':
-            return '|';
-        case 'multi':
-            return '&';
+        case "csv":
+            return ",";
+        case "ssv":
+            return " ";
+        case "tsv":
+            return "\t";
+        case "pipes":
+            return "|";
+        case "multi":
+            return "&";
     }
 };
 
@@ -273,39 +324,39 @@ const coercion = function (parameter, consumes) {
     let fn;
 
     switch (parameter.type) {
-        case 'array':
+        case "array":
             fn = function (data) {
                 if (Array.isArray(data)) {
                     return data;
                 }
-                const sep = pathsep(parameter.collectionFormat || 'csv');
+                const sep = pathsep(parameter.collectionFormat || "csv");
                 return data.split(sep);
             };
             break;
-        case 'integer':
-        case 'number':
+        case "integer":
+        case "number":
             fn = function (data) {
-                if (parameter.format === 'int64') {
+                if (parameter.format === "int64") {
                     return data;
                 }
                 return Number(data);
             };
             break;
-        case 'string':
+        case "string":
             //TODO: handle date, date-time, binary, byte formats.
             fn = String;
             break;
-        case 'boolean':
+        case "boolean":
             fn = function (data) {
-                return (data === 'true') || (data === '1') || (data === true);
+                return data === "true" || data === "1" || data === true;
             };
             break;
-        case 'file': {
+        case "file": {
             fn = function (data) {
                 return {
                     value: data,
                     consumes,
-                    in: parameter.in
+                    in: parameter.in,
                 };
             };
             break;
@@ -319,4 +370,4 @@ const coercion = function (parameter, consumes) {
     return fn;
 };
 
-module.exports = { create };
+export default { create };

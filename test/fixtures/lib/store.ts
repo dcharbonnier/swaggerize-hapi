@@ -1,8 +1,6 @@
-'use strict';
+const store: any[] = [];
 
-var store = [];
-
-module.exports = {
+export default {
     put: function (data) {
         store.push(data);
         return store.length - 1;
@@ -15,5 +13,5 @@ module.exports = {
     },
     all: function () {
         return store;
-    }
+    },
 };
